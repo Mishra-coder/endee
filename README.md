@@ -15,6 +15,9 @@ won't find "Full Stack Developer Intern" unless exact words match.
 InternMatch AI uses semantic similarity to understand the meaning behind
 skills and match them to the right internships.
 
+Note: Live demo uses lightweight search for deployment. 
+For full Endee Vector DB experience, run locally using Docker.
+
 ## How It Works
 
 Student describes their skills in natural language
