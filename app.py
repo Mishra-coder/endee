@@ -116,6 +116,5 @@ if st.button("Find Matching Internships") and query:
         st.info(get_career_advice(query, context))
 
 st.caption("Built with Endee Vector DB + Sentence Transformers + Groq AI")
-```
 
 
