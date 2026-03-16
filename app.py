@@ -118,11 +118,4 @@ if st.button("Find Matching Internships") and query:
 st.caption("Built with Endee Vector DB + Sentence Transformers + Groq AI")
 ```
 
-### requirements.txt bhi update karo:
-```
-streamlit
-endee
-sentence-transformers
-groq
-python-dotenv
-numpy
+
