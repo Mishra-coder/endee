@@ -3,4 +3,3 @@ sentence-transformers
 groq
 python-dotenv
 numpy
-EOF
