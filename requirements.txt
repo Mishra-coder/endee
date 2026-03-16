@@ -1,4 +1,5 @@
 streamlit
+endee
 sentence-transformers
 groq
 python-dotenv
