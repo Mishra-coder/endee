@@ -4,7 +4,7 @@ AI-powered internship finder that matches students to relevant internships
 based on their skills using semantic search - powered by Endee Vector DB.
 
 ## Deploy Link
-https://internmatch-ai.onrender.com/
+[https://internmatch-ai.onrender.com/](https://internmatch-ai.onrender.com/)
 
 ## Problem Statement
 
