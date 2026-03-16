@@ -1,25 +1,13 @@
 import os
+import numpy as np
 import streamlit as st
 from dotenv import load_dotenv
-from endee import Endee, Precision
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from groq import Groq
 
 load_dotenv()
-
-try:
-    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-except Exception:
-    pass
-
-try:
-    endee_client = Endee()
-    endee_client.set_base_url("http://0.0.0.0:8080/api/v1")
-except Exception:
-    endee_client = None
-
-INDEX_NAME = "internships"
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 INTERNSHIPS = [
     {"id": "1", "title": "Frontend Developer Intern", "company": "Google", "skills": "React JavaScript HTML CSS TypeScript frontend web development UI", "location": "Bangalore", "duration": "6 months", "stipend": "25000"},
@@ -39,65 +27,29 @@ INTERNSHIPS = [
     {"id": "15", "title": "Product Management Intern", "company": "Meesho", "skills": "product management roadmap analytics user research agile scrum market research", "location": "Bangalore", "duration": "3 months", "stipend": "20000"},
 ]
 
-def setup_index():
-    if not endee_client: return
-    try:
-        endee_client.create_index(
-            name=INDEX_NAME,
-            dimension=384,
-            space_type="cosine",
-            precision=Precision.INT8,
-        )
-    except Exception:
-        pass
+@st.cache_resource
+def build_vectorizer():
+    texts = [f"{i['title']} {i['company']} {i['skills']} {i['location']}" for i in INTERNSHIPS]
+    vectorizer = TfidfVectorizer()
+    matrix = vectorizer.fit_transform(texts)
+    return vectorizer, matrix
 
-def ingest_internships():
-    if not endee_client: return
-    try:
-        index = endee_client.get_index(name=INDEX_NAME)
-        vectors = []
-        for internship in INTERNSHIPS:
-            text = f"{internship['title']} {internship['company']} {internship['skills']} {internship['location']}"
-            embedding = embedding_model.encode(text).tolist()
-            vectors.append({
-                "id": internship["id"],
-                "vector": embedding,
-                "meta": internship,
-            })
-        index.upsert(vectors)
-    except Exception:
-        pass
+def search_internships(query, top_k=5):
+    vectorizer, matrix = build_vectorizer()
+    query_vec = vectorizer.transform([query])
+    scores = cosine_similarity(query_vec, matrix).flatten()
+    top_indices = np.argsort(scores)[::-1][:top_k]
+    return [(INTERNSHIPS[i], float(scores[i])) for i in top_indices]
 
-def search_internships(query: str, top_k: int = 5):
-    if not endee_client: return []
-    try:
-        index = endee_client.get_index(name=INDEX_NAME)
-        query_vector = embedding_model.encode(query).tolist()
-        return index.query(vector=query_vector, top_k=top_k)
-    except Exception:
-        return []
-
-def get_career_advice(query: str, matched_internships: str) -> str:
-    try:
-        prompt = f"""A student described themselves as: "{query}"
-        Top matching internships found:
-        {matched_internships}
-        Give 3-4 lines of career advice: which internship suits them best and what skills they should improve."""
-        response = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.choices[0].message.content
-    except Exception:
-        return "Advice currently unavailable."
+def get_career_advice(query, matched):
+    prompt = f'Student: "{query}"\nTop matches:\n{matched}\nGive 3-4 lines of career advice.'
+    response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
 
 st.set_page_config(page_title="InternMatch AI", layout="wide")
-
-if "indexed" not in st.session_state:
-    setup_index()
-    ingest_internships()
-    st.session_state["indexed"] = True
-
 st.title("InternMatch AI")
 st.subheader("Find the perfect internship based on your skills - powered by Endee Vector DB")
 st.markdown("---")
@@ -108,31 +60,26 @@ query = st.text_area(
     height=100,
 )
 
-search_btn = st.button("Find Matching Internships")
-
-if search_btn and query:
+if st.button("Find Matching Internships") and query:
     with st.spinner("Finding best matches..."):
-        results = search_internships(query, top_k=5)
+        results = search_internships(query)
 
-    if results:
-        st.markdown("### Top Matching Internships:")
-        context = ""
-        for i, result in enumerate(results):
-            meta = result.get("meta", {}) if isinstance(result, dict) else result.meta
-            score = round(result.get("similarity", 0), 3) if isinstance(result, dict) else round(result.similarity, 3)
-            context += f"{meta.get('title')} at {meta.get('company')}\n"
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown(f"#### {i + 1}. {meta.get('title')} at {meta.get('company')}")
-                st.write(f"Location: {meta.get('location')} | Duration: {meta.get('duration')} | Stipend: Rs {meta.get('stipend')}/month")
-                st.write(f"Skills: {meta.get('skills')}")
-            with col2:
-                st.metric("Match Score", score)
-            st.markdown("---")
-        
-        advice = get_career_advice(query, context)
-        st.info(advice)
-    else:
-        st.warning("No matches found. Ensure the Endee server is running locally.")
+    st.markdown("### Top Matching Internships:")
+    context = ""
+
+    for i, (internship, score) in enumerate(results):
+        context += f"{internship['title']} at {internship['company']}\n"
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"#### {i+1}. {internship['title']} at {internship['company']}")
+            st.write(f"Location: {internship['location']} | Duration: {internship['duration']} | Stipend: Rs {internship['stipend']}/month")
+            st.write(f"Skills: {internship['skills']}")
+        with col2:
+            st.metric("Match Score", round(score, 3))
+        st.markdown("---")
+
+    st.markdown("### AI Career Advice:")
+    with st.spinner("Generating advice..."):
+        st.info(get_career_advice(query, context))
 
 st.caption("Built with Endee Vector DB + Sentence Transformers + Groq AI")
