@@ -1,6 +1,6 @@
 streamlit
-python-dotenv
 sentence-transformers
 groq
+python-dotenv
 numpy
-pandas
+EOF
